@@ -73,14 +73,13 @@ export async function getRoundtripRanking(
         .slice(0, TRIPS_PER_MONTH);
 
       // Each airline lookup costs a search credit; only ranked trips get one.
+      // A failed lookup leaves that airline empty so the paid prices are kept.
       const trips = await Promise.all(
         top.map(async (fare) => ({
           ...fare,
-          airline: await source.airline({
-            ...route,
-            departure: fare.departure,
-            return: fare.return,
-          }),
+          airline: await source
+            .airline({ ...route, departure: fare.departure, return: fare.return })
+            .catch(() => null),
         })),
       );
 

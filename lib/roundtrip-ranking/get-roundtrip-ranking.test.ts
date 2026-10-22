@@ -96,6 +96,39 @@ describe("getRoundtripRanking", () => {
     expect(asked.sort()).toEqual(["2026-11-02", "2026-11-03", "2026-11-09"]);
   });
 
+  it("항공사 조회가 실패한 일정은 항공사를 비워 두고 순위는 그대로 돌려준다", async () => {
+    const source = fakeSource(
+      [
+        { departure: "2026-11-02", return: "2026-11-04", price: 249400 },
+        { departure: "2026-11-03", return: "2026-11-05", price: 279400 },
+      ],
+      async ({ departure }) => {
+        if (departure === "2026-11-03") throw new Error("SerpApi failed");
+        return "에어부산";
+      },
+    );
+
+    const ranking = await getRoundtripRanking(route, source);
+
+    expect(ranking.months[0].trips).toEqual([
+      { departure: "2026-11-02", return: "2026-11-04", price: 249400, airline: "에어부산" },
+      { departure: "2026-11-03", return: "2026-11-05", price: 279400, airline: null },
+    ]);
+  });
+
+  it("가격 조회가 실패하면 오류를 그대로 던진다", async () => {
+    const source: FlightPriceSource = {
+      async calendar() {
+        throw new Error("Apify failed");
+      },
+      async airline() {
+        return "에어부산";
+      },
+    };
+
+    await expect(getRoundtripRanking(route, source)).rejects.toThrow("Apify failed");
+  });
+
   it("캘린더 요청마다 날짜 조합을 200개 이하로 나눠 11–12월 출발 2–3박 일정을 모두 덮는다", async () => {
     const queries: CalendarQuery[] = [];
     const source: FlightPriceSource = {
