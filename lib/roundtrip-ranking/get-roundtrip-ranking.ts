@@ -2,6 +2,7 @@ import type {
   CalendarFare,
   CalendarQuery,
   FlightDetails,
+  FlightLeg,
   FlightPriceSource,
   MonthRanking,
   RankedTrip,
@@ -14,6 +15,8 @@ const MONTHS = ["2026-11", "2026-12"];
 const MIN_NIGHTS = 2;
 const MAX_NIGHTS = 3;
 const TRIPS_PER_MONTH = 3;
+// Candidates re-checked in the Korean market; each costs up to 4 SerpApi searches.
+const CANDIDATES_PER_MONTH = 5;
 
 const FIRST_DEPARTURE = "2026-11-01";
 const LAST_DEPARTURE = "2026-12-31";
@@ -55,6 +58,9 @@ function calendarWindows(route: Route): CalendarQuery[] {
   }
   return windows;
 }
+
+const fromOneWay = (leg: FlightLeg | null | undefined): FlightLeg | null =>
+  leg ? { ...leg, fromOneWay: true } : null;
 
 function cheapestFirst(a: CalendarFare, b: CalendarFare) {
   return a.price - b.price || a.departure.localeCompare(b.departure);
@@ -138,8 +144,10 @@ export async function getRoundtripRanking(
         inboundPrice: null,
         market: "KR",
         airline: rt.airline,
-        outbound: rt.outbound,
-        inbound: rt.inbound,
+        // A leg the round-trip search left empty is filled from the one-way
+        // offer already fetched, marked so the screen can say so.
+        outbound: rt.outbound ?? fromOneWay(out?.leg),
+        inbound: rt.inbound ?? fromOneWay(ret?.leg),
       };
     }
     if (oneWaysPrice !== null) {
@@ -170,9 +178,11 @@ export async function getRoundtripRanking(
       const candidates = trips
         .filter((trip) => trip.departure.startsWith(month))
         .sort(cheapestFirst)
-        .slice(0, TRIPS_PER_MONTH);
+        .slice(0, CANDIDATES_PER_MONTH);
 
-      const ranked = (await Promise.all(candidates.map(inKoreanMarket))).sort(cheapestFirst);
+      const ranked = (await Promise.all(candidates.map(inKoreanMarket)))
+        .sort(cheapestFirst)
+        .slice(0, TRIPS_PER_MONTH);
       return { month, trips: ranked };
     }),
   );

@@ -26,7 +26,7 @@ function success(overrides: Partial<Success> = {}): SearchState {
               market: "KR",
               airline: "에어부산",
               outbound: { departAt: "2026-11-02 08:35", arriveAt: "2026-11-02 10:00", flightNumber: "BX 122", airline: "에어부산" },
-              inbound: { departAt: "2026-11-04 11:00", arriveAt: "2026-11-04 12:30", flightNumber: "LJ 612", airline: "진에어" },
+              inbound: { departAt: "2026-11-04 11:00", arriveAt: "2026-11-04 12:30", flightNumber: "LJ 612", airline: "진에어", fromOneWay: true },
             },
             {
               departure: "2026-11-09",
@@ -101,6 +101,9 @@ describe("RankingSearch", () => {
     // A return airline that differs from the outbound one is named on its line.
     expect(first).toHaveTextContent("오는 편11:00 간사이 → 12:30 김해 · LJ 612 · 진에어");
     expect(second).toHaveTextContent("가는 편07:00 김해 → 08:25 간사이 · 7C 1353");
+    // A leg filled from the one-way search says so; others do not.
+    expect(first).toHaveTextContent("12:30 김해 · LJ 612 · 진에어 · 편도 최저가 기준");
+    expect(second).not.toHaveTextContent("편도 최저가 기준");
     expect(second).toHaveTextContent("오는 편시각 정보 없음");
 
     expect(first).toHaveTextContent("왕복 1장");

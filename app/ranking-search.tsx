@@ -146,6 +146,8 @@ function legText(
   if (leg.flightNumber) parts.push(leg.flightNumber);
   // Name the airline here only when it differs from the trip's (outbound) airline.
   if (leg.airline && leg.airline !== tripAirline) parts.push(leg.airline);
+  // Filled from that day's cheapest one-way flight, not the round-trip ticket's own.
+  if (leg.fromOneWay) parts.push("편도 최저가 기준");
   return parts.join(" · ");
 }
 

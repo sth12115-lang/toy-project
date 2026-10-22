@@ -30,6 +30,11 @@ export type FlightLeg = {
   arriveAt: string;
   flightNumber: string | null;
   airline: string | null;
+  /**
+   * True when a round trip's leg was filled from that day's cheapest one-way
+   * flight, which may not be the flight the round-trip ticket uses.
+   */
+  fromOneWay?: boolean;
 };
 
 export type FlightDetails = {

@@ -266,25 +266,29 @@ describe("getRoundtripRanking", () => {
       ]);
     });
 
-    it("달마다 후보 3개만 한국 시장으로 확인한다", async () => {
+    it("달마다 후보 5개를 한국 시장으로 확인하고, 그중 싼 3개를 보여 준다", async () => {
       const asked: string[] = [];
+      const dates = ["02", "03", "09", "10", "16", "17"];
       const source = fakeSource({
-        roundTrips: [
-          { departure: "2026-11-02", return: "2026-11-04", price: 249400 },
-          { departure: "2026-11-03", return: "2026-11-05", price: 279400 },
-          { departure: "2026-11-09", return: "2026-11-11", price: 288700 },
-          { departure: "2026-11-16", return: "2026-11-18", price: 299000 },
-        ],
+        // Overseas prices rise with the date; the 6th is never checked.
+        roundTrips: dates.map((d, i) => ({
+          departure: `2026-11-${d}`,
+          return: `2026-11-${String(Number(d) + 2).padStart(2, "0")}`,
+          price: 200000 + i * 10000,
+        })),
         flight: async ({ departure }) => {
           asked.push(departure);
-          return { price: null, airline: null, outbound: null, inbound: null };
+          // In the Korean market the 5th candidate is the cheapest.
+          const price = departure === "2026-11-16" ? 150000 : 260000;
+          return { price, airline: null, outbound: null, inbound: null };
         },
       });
 
-      await getRoundtripRanking(route, source);
+      const trips = (await getRoundtripRanking(route, source)).months[0].trips;
 
-      // The 4th and the empty December are not checked.
-      expect(asked.sort()).toEqual(["2026-11-02", "2026-11-03", "2026-11-09"]);
+      expect(asked.sort()).toEqual(["2026-11-02", "2026-11-03", "2026-11-09", "2026-11-10", "2026-11-16"]);
+      expect(trips).toHaveLength(3);
+      expect(trips[0]).toMatchObject({ departure: "2026-11-16", price: 150000 });
     });
 
     it("한국 시장 가격을 확인하지 못하면 해외 시장 가격을 그대로 쓰고 그렇게 표시한다", async () => {
@@ -308,6 +312,20 @@ describe("getRoundtripRanking", () => {
         outbound: null,
         inbound: null,
       });
+    });
+
+    it("왕복으로 고른 일정에서 비어 있는 오는 편 시각은 이미 받은 편도 항공편으로 채우고 그렇게 표시한다", async () => {
+      const source = fakeSource({
+        roundTrips: [{ departure: "2026-11-30", return: "2026-12-02", price: 249400 }],
+        flight: async () => ({ price: 228660, airline: "이스타항공", outbound: OUT_LEG, inbound: null }),
+        krOneWay: { "PUS 2026-11-30": 130000, "KIX 2026-12-02": 140000 },
+      });
+
+      const [trip] = (await getRoundtripRanking(route, source)).months[0].trips;
+
+      expect(trip.ticket).toBe("roundTrip");
+      expect(trip.outbound).toEqual(OUT_LEG);
+      expect(trip.inbound).toEqual({ ...BACK_LEG, fromOneWay: true });
     });
 
     it("한국 시장 왕복 가격만 확인되면 왕복으로 보여 준다", async () => {
