@@ -131,6 +131,26 @@ describe("createRankingCache", () => {
     }
   });
 
+  it("저장소에 쓰지 못해도(읽기 전용 파일 시스템) 새로 받아 온 결과는 그대로 돌려준다", async () => {
+    const cache = createRankingCache({
+      ttlMs: HOUR,
+      now: () => 0,
+      store: {
+        get: () => undefined,
+        set: () => {
+          throw new Error("EROFS: read-only file system");
+        },
+      },
+    });
+    const loader = countingLoader();
+
+    const result = await cache.getOrLoad(kix, loader.load);
+
+    expect(result.cached).toBe(false);
+    expect(result.refreshFailed).toBe(false);
+    expect(result.ranking.months[0].month).toBe("2026-11");
+  });
+
   it("실패한 조회는 저장하지 않아 다음 조회에서 새로 검색한다", async () => {
     const cache = createRankingCache({ ttlMs: HOUR, now: () => 0 });
     const loader = countingLoader();

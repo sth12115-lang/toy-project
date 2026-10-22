@@ -63,15 +63,23 @@ export function createRankingCache({
       const stored = store.get(key);
       if (stored && isLive(stored)) return served(stored, true, false);
 
+      let entry: StoredRanking;
       try {
-        const entry = { ranking: await load(), fetchedAt: now() };
-        store.set(key, entry);
-        return served(entry, false, false);
+        entry = { ranking: await load(), fetchedAt: now() };
       } catch (error) {
         // Keep showing the last good ranking rather than nothing.
         if (stored) return served(stored, true, true);
         throw error;
       }
+
+      // A store that cannot be written (e.g. a read-only serverless file
+      // system) must not throw away a ranking that was already paid for.
+      try {
+        store.set(key, entry);
+      } catch (error) {
+        console.error("Could not store the ranking", error);
+      }
+      return served(entry, false, false);
     },
   };
 }

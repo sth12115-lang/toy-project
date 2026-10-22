@@ -1,6 +1,10 @@
 import { getCacheExpiresAt, getRemainingUsd, searchRanking } from "./actions";
 import { RankingSearch } from "./ranking-search";
 
+// A fresh fetch (7 Apify runs, then SerpApi re-checks) takes about 20–30s,
+// longer than some platform defaults for the page's Server Actions.
+export const maxDuration = 60;
+
 export default async function Home() {
   const [remainingUsd, cacheExpiresAt] = await Promise.all([
     getRemainingUsd(),

@@ -1,5 +1,6 @@
 "use server";
 
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import {
@@ -16,10 +17,16 @@ import {
 
 import type { SearchState } from "./ranking-search";
 
+// Vercel functions can only write to /tmp, which is wiped whenever a new
+// instance starts; locally the project's .data folder survives restarts.
+const STORE_PATH = process.env.VERCEL
+  ? join(tmpdir(), "fca", "ranking.json")
+  : join(process.cwd(), ".data", "ranking.json");
+
 // Prices are fetched at most every 12 hours and kept on disk across restarts.
 const rankingCache = createRankingCache({
   ttlMs: 12 * 60 * 60 * 1000,
-  store: createFileStore(join(process.cwd(), ".data", "ranking.json")),
+  store: createFileStore(STORE_PATH),
 });
 
 /** When the stored ranking expires and the next search fetches new prices. */
