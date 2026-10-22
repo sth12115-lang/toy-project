@@ -64,7 +64,7 @@ describe("Apify 가격 캘린더", () => {
       400,
     );
 
-    await expect(createApifyCalendar("token", fetchImpl)(window)).rejects.toThrow();
+    await expect(createApifyCalendar("token", fetchImpl, { retryDelayMs: 0 })(window)).rejects.toThrow();
   });
 
   it("이번 달 남은 무료 사용 금액을 돌려주고, 확인하지 못하면 null을 돌려준다", async () => {
@@ -282,3 +282,44 @@ describe("SerpApi 편도 항공편 없음", () => {
     expect(offer).toBeNull();
   });
 });
+
+describe("Apify 일시 거부 재시도", () => {
+  const failedRun = () =>
+    new Response(JSON.stringify({ error: { type: "run-failed", message: "Actor run did not succeed" } }), {
+      status: 400,
+      headers: { "content-type": "application/json" },
+    });
+  const okRun = () =>
+    new Response(JSON.stringify([{ outboundDate: "2026-11-17", returnDate: "2026-11-19", price: 249900 }]), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+
+  it("실행이 한 번 실패하면 잠시 뒤 한 번 더 시도해 그 결과를 돌려준다", async () => {
+    const responses = [failedRun(), okRun()];
+    let calls = 0;
+    const fetchImpl = (async () => {
+      calls += 1;
+      return responses.shift()!;
+    }) as typeof fetch;
+
+    const fares = await createApifyCalendar("token", fetchImpl, { retryDelayMs: 0 })(window);
+
+    expect(calls).toBe(2);
+    expect(fares).toEqual([{ departure: "2026-11-17", return: "2026-11-19", price: 249900 }]);
+  });
+
+  it("다시 시도해도 실패하면 오류를 던진다", async () => {
+    let calls = 0;
+    const fetchImpl = (async () => {
+      calls += 1;
+      return failedRun();
+    }) as typeof fetch;
+
+    await expect(
+      createApifyCalendar("token", fetchImpl, { retryDelayMs: 0 })(window),
+    ).rejects.toThrow();
+    expect(calls).toBe(2);
+  });
+});
+

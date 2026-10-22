@@ -45,13 +45,29 @@ async function withActorSlot<T>(run: () => Promise<T>): Promise<T> {
   }
 }
 
-/** Runs the Google Flights calendar actor once and returns rows priced in KRW. */
-function runCalendarActor(
+type ApifyOptions = {
+  /** Wait before the single retry of a failed run (failed runs are not charged). */
+  retryDelayMs?: number;
+};
+
+// Google Flights sometimes refuses a grid for a few seconds ("search allowance
+// spent"); a failed run costs nothing, so one later retry is worth it.
+const DEFAULT_RETRY_DELAY_MS = 10_000;
+
+/** Runs the Google Flights calendar actor, retrying once, and returns rows priced in KRW. */
+async function runCalendarActor(
   token: string,
   fetchImpl: typeof fetch,
   input: Record<string, unknown>,
+  { retryDelayMs = DEFAULT_RETRY_DELAY_MS }: ApifyOptions = {},
 ) {
-  return withActorSlot(() => runCalendarActorNow(token, fetchImpl, input));
+  try {
+    return await withActorSlot(() => runCalendarActorNow(token, fetchImpl, input));
+  } catch {
+    // Wait outside the slot so other runs can proceed meanwhile.
+    await new Promise((resolve) => setTimeout(resolve, retryDelayMs));
+    return withActorSlot(() => runCalendarActorNow(token, fetchImpl, input));
+  }
 }
 
 async function runCalendarActorNow(
@@ -97,6 +113,7 @@ async function runCalendarActorNow(
 export function createApifyCalendar(
   token: string,
   fetchImpl: typeof fetch = fetch,
+  options: ApifyOptions = {},
 ) {
   return async (query: CalendarQuery): Promise<CalendarFare[]> => {
     const rows = await runCalendarActor(token, fetchImpl, {
@@ -109,7 +126,7 @@ export function createApifyCalendar(
       returnRangeEnd: query.returnEnd,
       minTripLengthNights: 2,
       maxTripLengthNights: 3,
-    });
+    }, options);
     return rows
       .filter((row) => row.returnDate)
       .map((row) => ({
@@ -124,6 +141,7 @@ export function createApifyCalendar(
 export function createApifyOneWayCalendar(
   token: string,
   fetchImpl: typeof fetch = fetch,
+  options: ApifyOptions = {},
 ) {
   return async (query: OneWayQuery): Promise<OneWayFare[]> => {
     const rows = await runCalendarActor(token, fetchImpl, {
@@ -132,7 +150,7 @@ export function createApifyOneWayCalendar(
       tripType: "oneWay",
       dateRangeStart: query.start,
       dateRangeEnd: query.end,
-    });
+    }, options);
     return rows.map((row) => ({ date: row.outboundDate, price: row.price }));
   };
 }
