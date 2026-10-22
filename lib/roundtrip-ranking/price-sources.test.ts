@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   createApifyCalendar,
-  createSerpApiAirline,
+  createApifyOneWayCalendar,
+  createSerpApiFlight,
+  createSerpApiOneWayFlight,
   fetchApifyRemainingUsd,
 } from "@/lib/roundtrip-ranking/server";
 
@@ -79,43 +81,204 @@ describe("Apify 가격 캘린더", () => {
   });
 });
 
-describe("SerpApi 항공사", () => {
-  it("가장 싼 항공편의 가는 편 항공사를 돌려준다", async () => {
+describe("SerpApi 항공편", () => {
+  const trip = {
+    origin: "PUS",
+    destination: "KIX",
+    departure: "2026-11-17",
+    return: "2026-11-19",
+  };
+
+  const segment = (
+    airline: string,
+    flightNumber: string,
+    from: string,
+    departAt: string,
+    to: string,
+    arriveAt: string,
+  ) => ({
+    airline,
+    flight_number: flightNumber,
+    departure_airport: { id: from, time: departAt },
+    arrival_airport: { id: to, time: arriveAt },
+  });
+
+  // Answers the outbound search, then the return search made with departure_token.
+  function serpApi(returnStatus = 200) {
+    const requests: URL[] = [];
+    const fetchImpl = (async (url: URL | string) => {
+      const u = new URL(String(url));
+      requests.push(u);
+      const isReturn = u.searchParams.has("departure_token");
+      const body = isReturn
+        ? returnStatus === 200
+          ? {
+              best_flights: [
+                { price: 299900, flights: [segment("진에어", "LJ 616", "KIX", "2026-11-19 16:25", "PUS", "2026-11-19 18:05")] },
+                { price: 249900, flights: [segment("진에어", "LJ 612", "KIX", "2026-11-19 11:00", "PUS", "2026-11-19 12:30")] },
+              ],
+            }
+          : { error: "Temporary failure" }
+        : {
+            best_flights: [
+              { price: 273700, departure_token: "tw", flights: [segment("티웨이항공", "TW 301", "PUS", "2026-11-17 07:00", "KIX", "2026-11-17 08:30")] },
+              { price: 249900, departure_token: "lj", flights: [segment("진에어", "LJ 611", "PUS", "2026-11-17 08:35", "KIX", "2026-11-17 10:00")] },
+            ],
+          };
+      return new Response(JSON.stringify(body), {
+        status: isReturn ? returnStatus : 200,
+        headers: { "content-type": "application/json" },
+      });
+    }) as typeof fetch;
+    return { fetchImpl, requests };
+  }
+
+  it("한국 시장 왕복 최저가와 그 항공편의 항공사, 가는 편·오는 편 시각을 돌려준다", async () => {
+    const { fetchImpl, requests } = serpApi();
+
+    const details = await createSerpApiFlight("key", fetchImpl)(trip);
+
+    expect(details).toEqual({
+      price: 249900,
+      airline: "진에어",
+      outbound: { departAt: "2026-11-17 08:35", arriveAt: "2026-11-17 10:00", flightNumber: "LJ 611", airline: "진에어" },
+      inbound: { departAt: "2026-11-19 11:00", arriveAt: "2026-11-19 12:30", flightNumber: "LJ 612", airline: "진에어" },
+    });
+    expect(requests).toHaveLength(2);
+    expect(requests[0].searchParams.get("outbound_date")).toBe("2026-11-17");
+    expect(requests[0].searchParams.get("currency")).toBe("KRW");
+    expect(requests[0].searchParams.get("gl")).toBe("kr");
+    expect(requests[1].searchParams.get("departure_token")).toBe("lj");
+  });
+
+  it("오는 편 조회만 실패하면 가는 편 정보는 남기고 오는 편만 비운다", async () => {
+    const { fetchImpl } = serpApi(500);
+
+    const details = await createSerpApiFlight("key", fetchImpl)(trip);
+
+    expect(details.airline).toBe("진에어");
+    expect(details.outbound?.flightNumber).toBe("LJ 611");
+    expect(details.inbound).toBeNull();
+  });
+
+  it("가는 편 조회가 실패하면 오류를 던진다", async () => {
+    const { fetchImpl } = respondWith({ error: "Invalid API key." }, 401);
+
+    await expect(createSerpApiFlight("bad", fetchImpl)(trip)).rejects.toThrow();
+  });
+});
+
+describe("Apify 편도 캘린더", () => {
+  it("한 방향의 기간을 편도 원화로 묻고, 날짜별 가격을 돌려준다", async () => {
+    const { fetchImpl, requests } = respondWith([
+      { outboundDate: "2026-11-03", price: 149974, currency: "KRW", currencyMatchesRequest: true },
+      { outboundDate: "2026-11-04", price: null, currency: "KRW" },
+    ]);
+
+    const fares = await createApifyOneWayCalendar("token", fetchImpl)({
+      origin: "KIX",
+      destination: "PUS",
+      start: "2026-11-03",
+      end: "2027-01-03",
+    });
+
+    expect(fares).toEqual([{ date: "2026-11-03", price: 149974 }]);
+    const input = JSON.parse(String(requests[0].init?.body));
+    expect(input).toMatchObject({
+      origin: "KIX",
+      destination: "PUS",
+      tripType: "oneWay",
+      dateRangeStart: "2026-11-03",
+      dateRangeEnd: "2027-01-03",
+      currency: "KRW",
+    });
+    expect(input).not.toHaveProperty("returnRangeStart");
+  });
+});
+
+describe("SerpApi 편도 항공편", () => {
+  it("그 날짜 한국 시장 편도 최저가와 그 항공편의 시각·편명·항공사를 편도로 묻는다", async () => {
     const { fetchImpl, requests } = respondWith({
       best_flights: [
-        { price: 273700, flights: [{ airline: "티웨이항공" }] },
-        { price: 249900, flights: [{ airline: "진에어" }] },
-      ],
-      other_flights: [
-        { price: 260000, flights: [{ airline: "제주항공" }, { airline: "제주항공" }] },
+        {
+          price: 149974,
+          flights: [
+            {
+              airline: "이스타항공",
+              flight_number: "ZE 914",
+              departure_airport: { id: "KIX", time: "2026-11-04 10:50" },
+              arrival_airport: { id: "PUS", time: "2026-11-04 12:20" },
+            },
+          ],
+        },
       ],
     });
 
-    const airline = await createSerpApiAirline("key", fetchImpl)({
-      origin: "PUS",
-      destination: "KIX",
-      departure: "2026-11-17",
-      return: "2026-11-19",
+    const leg = await createSerpApiOneWayFlight("key", fetchImpl)({
+      origin: "KIX",
+      destination: "PUS",
+      date: "2026-11-04",
     });
 
-    expect(airline).toBe("진에어");
+    expect(leg).toEqual({
+      price: 149974,
+      leg: {
+        departAt: "2026-11-04 10:50",
+        arriveAt: "2026-11-04 12:20",
+        flightNumber: "ZE 914",
+        airline: "이스타항공",
+      },
+    });
     const url = new URL(requests[0].url);
-    expect(url.searchParams.get("engine")).toBe("google_flights");
-    expect(url.searchParams.get("outbound_date")).toBe("2026-11-17");
-    expect(url.searchParams.get("return_date")).toBe("2026-11-19");
-    expect(url.searchParams.get("currency")).toBe("KRW");
+    expect(url.searchParams.get("type")).toBe("2");
+    expect(url.searchParams.get("departure_id")).toBe("KIX");
+    expect(url.searchParams.get("outbound_date")).toBe("2026-11-04");
+    expect(url.searchParams.has("return_date")).toBe(false);
   });
 
   it("응답이 실패하면 오류를 던진다", async () => {
     const { fetchImpl } = respondWith({ error: "Invalid API key." }, 401);
 
     await expect(
-      createSerpApiAirline("bad", fetchImpl)({
-        origin: "PUS",
-        destination: "KIX",
-        departure: "2026-11-17",
-        return: "2026-11-19",
-      }),
+      createSerpApiOneWayFlight("bad", fetchImpl)({ origin: "PUS", destination: "KIX", date: "2026-11-02" }),
     ).rejects.toThrow();
+  });
+});
+
+describe("Apify 동시 실행 한도", () => {
+  it("왕복·편도 캘린더를 함께 요청해도 actor는 동시에 5개까지만 실행한다", async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const fetchImpl = (async () => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      inFlight -= 1;
+      return new Response("[]", { status: 200, headers: { "content-type": "application/json" } });
+    }) as typeof fetch;
+    const calendar = createApifyCalendar("token", fetchImpl);
+    const oneWay = createApifyOneWayCalendar("token", fetchImpl);
+
+    await Promise.all([
+      ...Array.from({ length: 5 }, () => calendar(window)),
+      oneWay({ origin: "PUS", destination: "KIX", start: "2026-11-01", end: "2026-12-31" }),
+      oneWay({ origin: "KIX", destination: "PUS", start: "2026-11-03", end: "2027-01-03" }),
+    ]);
+
+    expect(maxInFlight).toBeLessThanOrEqual(5);
+  });
+});
+
+describe("SerpApi 편도 항공편 없음", () => {
+  it("그 날짜에 편도 항공편이 없으면 null을 돌려준다", async () => {
+    const { fetchImpl } = respondWith({ best_flights: [], other_flights: [] });
+
+    const offer = await createSerpApiOneWayFlight("key", fetchImpl)({
+      origin: "PUS",
+      destination: "KIX",
+      date: "2026-11-02",
+    });
+
+    expect(offer).toBeNull();
   });
 });

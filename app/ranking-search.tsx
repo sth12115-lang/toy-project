@@ -32,6 +32,7 @@ import {
   DESTINATION_AIRPORT,
   ORIGIN_AIRPORT,
   type MonthRanking,
+  type FlightLeg,
   type RankedTrip,
   type RoundtripRanking,
 } from "@/lib/roundtrip-ranking";
@@ -54,8 +55,8 @@ export type SearchState =
       remainingUsd: number | null;
     };
 
-// Five 13-day Apify windows at about $0.07 each.
-const USD_PER_REFRESH = 0.35;
+// Five 13-day round-trip windows (~$0.35) plus one one-way run per direction (~$0.18).
+const USD_PER_REFRESH = 0.53;
 
 type SearchAction = (
   previous: SearchState,
@@ -132,6 +133,40 @@ function RemainingRefreshes({ usd }: { usd: number | null }) {
   );
 }
 
+const timeOf = (localDateTime: string) => localDateTime.slice(11, 16);
+
+function legText(
+  leg: FlightLeg | null | undefined,
+  from: string,
+  to: string,
+  tripAirline: string | null,
+) {
+  if (!leg) return "시각 정보 없음";
+  const parts = [`${timeOf(leg.departAt)} ${from} → ${timeOf(leg.arriveAt)} ${to}`];
+  if (leg.flightNumber) parts.push(leg.flightNumber);
+  // Name the airline here only when it differs from the trip's (outbound) airline.
+  if (leg.airline && leg.airline !== tripAirline) parts.push(leg.airline);
+  return parts.join(" · ");
+}
+
+function TripLegs({ trip }: { trip: RankedTrip }) {
+  // Rankings stored before flight times existed have no leg fields at all.
+  const rows = [
+    ["가는 편", legText(trip.outbound, "김해", "간사이", trip.airline)],
+    ["오는 편", legText(trip.inbound, "간사이", "김해", trip.airline)],
+  ];
+  return (
+    <dl className="grid grid-cols-[auto_1fr] gap-x-2 text-xs text-muted-foreground">
+      {rows.map(([label, text]) => (
+        <div key={label} className="contents">
+          <dt className="font-medium">{label}</dt>
+          <dd className="tabular-nums">{text}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
 function TripItem({ trip, rank }: { trip: RankedTrip; rank: number }) {
   const nights = nightsOf(trip);
   return (
@@ -147,11 +182,27 @@ function TripItem({ trip, rank }: { trip: RankedTrip; rank: number }) {
         </ItemTitle>
         <ItemDescription>
           {nights}박 {nights + 1}일 ·{" "}
-          {trip.airline ?? "항공사 정보 없음"}
+          {trip.airline ?? "항공사 정보 없음"} ·{" "}
+          {/* Rankings stored before one-way comparison have no ticket field. */}
+          {trip.ticket === "oneWays" ? "편도 2장" : "왕복 1장"}
         </ItemDescription>
+        <TripLegs trip={trip} />
       </ItemContent>
-      <div className="font-heading text-base font-semibold tabular-nums">
-        {trip.price.toLocaleString("ko-KR")}원
+      <div className="flex flex-col items-end gap-0.5 text-right">
+        <div className="font-heading text-base font-semibold tabular-nums">
+          {trip.price.toLocaleString("ko-KR")}원
+        </div>
+        {trip.ticket === "oneWays" && (
+          <div className="text-xs text-muted-foreground tabular-nums">
+            가는 편 {trip.outboundPrice?.toLocaleString("ko-KR")}원 + 오는 편{" "}
+            {trip.inboundPrice?.toLocaleString("ko-KR")}원
+          </div>
+        )}
+        {trip.market === "overseas" && (
+          <div className="text-xs text-muted-foreground">
+            해외 시장 가격(한국 시장 확인 실패)
+          </div>
+        )}
       </div>
     </Item>
   );

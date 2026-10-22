@@ -15,7 +15,8 @@ export default async function Home() {
         </h1>
         <p className="text-muted-foreground">
           2026년 11–12월, 2박 3일–3박 4일 왕복 일정 중 달마다 가장 싼 3개를
-          보여 드립니다. 가격은 성인 1명 이코노미 기준입니다.
+          보여 드립니다. 가격은 Google Flights 한국 시장, 성인 1명 이코노미
+          기준이며 왕복 1장과 편도 2장 중 더 싼 쪽입니다.
         </p>
       </header>
       <RankingSearch

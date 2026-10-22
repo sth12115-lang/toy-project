@@ -2,7 +2,9 @@
 export * from "./index";
 export {
   createApifyCalendar,
-  createSerpApiAirline,
+  createApifyOneWayCalendar,
+  createSerpApiFlight,
+  createSerpApiOneWayFlight,
   fetchApifyRemainingUsd,
 } from "./price-sources";
 export { createFileStore } from "./ranking-file-store";

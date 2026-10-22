@@ -4,9 +4,11 @@ import { join } from "node:path";
 
 import {
   createApifyCalendar,
+  createApifyOneWayCalendar,
   createFileStore,
   createRankingCache,
-  createSerpApiAirline,
+  createSerpApiFlight,
+  createSerpApiOneWayFlight,
   FIXED_ROUTE,
   fetchApifyRemainingUsd,
   getRoundtripRanking,
@@ -46,7 +48,9 @@ export async function searchRanking(): Promise<SearchState> {
         }
         return getRoundtripRanking(FIXED_ROUTE, {
           calendar: createApifyCalendar(apifyToken),
-          airline: createSerpApiAirline(serpApiKey),
+          oneWayCalendar: createApifyOneWayCalendar(apifyToken),
+          flight: createSerpApiFlight(serpApiKey),
+          oneWayFlight: createSerpApiOneWayFlight(serpApiKey),
         });
       },
     );

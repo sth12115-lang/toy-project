@@ -21,5 +21,5 @@ test("홈 화면은 부산-오사카 제목과 최저가 조회 버튼, 이번 �
   expect(
     screen.getByRole("button", { name: "최저가 조회" }),
   ).toBeInTheDocument();
-  expect(screen.getByText("이번 달 남은 갱신 14회")).toBeInTheDocument();
+  expect(screen.getByText("이번 달 남은 갱신 9회")).toBeInTheDocument();
 });

@@ -16,9 +16,31 @@ function success(overrides: Partial<Success> = {}): SearchState {
         {
           month: "2026-11",
           trips: [
-            { departure: "2026-11-02", return: "2026-11-04", price: 249400, airline: "에어부산" },
-            { departure: "2026-11-09", return: "2026-11-11", price: 259400, airline: "제주항공" },
-            { departure: "2026-11-16", return: "2026-11-18", price: 269400, airline: null },
+            {
+              departure: "2026-11-02",
+              return: "2026-11-04",
+              price: 249400,
+              ticket: "roundTrip",
+              outboundPrice: null,
+              inboundPrice: null,
+              market: "KR",
+              airline: "에어부산",
+              outbound: { departAt: "2026-11-02 08:35", arriveAt: "2026-11-02 10:00", flightNumber: "BX 122", airline: "에어부산" },
+              inbound: { departAt: "2026-11-04 11:00", arriveAt: "2026-11-04 12:30", flightNumber: "LJ 612", airline: "진에어" },
+            },
+            {
+              departure: "2026-11-09",
+              return: "2026-11-11",
+              price: 253874,
+              ticket: "oneWays",
+              outboundPrice: 103900,
+              inboundPrice: 149974,
+              market: "KR",
+              airline: "제주항공",
+              outbound: { departAt: "2026-11-09 07:00", arriveAt: "2026-11-09 08:25", flightNumber: "7C 1353", airline: "제주항공" },
+              inbound: null,
+            },
+            { departure: "2026-11-16", return: "2026-11-18", price: 269400, ticket: "roundTrip", outboundPrice: null, inboundPrice: null, market: "overseas", airline: null, outbound: null, inbound: null },
           ],
         },
         { month: "2026-12", trips: [] },
@@ -75,8 +97,46 @@ describe("RankingSearch", () => {
     expect(second).toHaveTextContent("제주항공");
     expect(third).toHaveTextContent("항공사 정보 없음");
 
+    expect(first).toHaveTextContent("가는 편08:35 김해 → 10:00 간사이 · BX 122");
+    // A return airline that differs from the outbound one is named on its line.
+    expect(first).toHaveTextContent("오는 편11:00 간사이 → 12:30 김해 · LJ 612 · 진에어");
+    expect(second).toHaveTextContent("가는 편07:00 김해 → 08:25 간사이 · 7C 1353");
+    expect(second).toHaveTextContent("오는 편시각 정보 없음");
+
+    expect(first).toHaveTextContent("왕복 1장");
+    expect(second).toHaveTextContent("편도 2장");
+    expect(second).toHaveTextContent("253,874원");
+    expect(second).toHaveTextContent("가는 편 103,900원 + 오는 편 149,974원");
+    expect(first).not.toHaveTextContent("편도 2장");
+
+    // Only a trip the Korean market could not re-check says so.
+    expect(third).toHaveTextContent("해외 시장 가격");
+    expect(first).not.toHaveTextContent("해외 시장 가격");
+    expect(third).toHaveTextContent("가는 편시각 정보 없음");
+
     const december = screen.getByRole("region", { name: "2026년 12월" });
     expect(december).toHaveTextContent("조건에 맞는 일정이 없습니다");
+  });
+
+  it("시각 정보가 없는 예전 저장 결과도 시각 정보 없음으로 보여 준다", async () => {
+    const legacy = success();
+    if (legacy.status === "success") {
+      legacy.ranking.months[0].trips = [
+        // Stored before flight times existed: no outbound/inbound fields at all.
+        { departure: "2026-11-02", return: "2026-11-04", price: 249400, airline: "에어부산" } as never,
+      ];
+    }
+    renderSearch(async () => legacy);
+
+    search();
+
+    const november = await screen.findByRole("region", { name: "2026년 11월" });
+    const [only] = within(november).getAllByRole("listitem");
+    expect(only).toHaveTextContent("에어부산");
+    expect(only).toHaveTextContent("가는 편시각 정보 없음");
+    expect(only).toHaveTextContent("오는 편시각 정보 없음");
+    // Stored before one-way comparison existed: treated as one round-trip ticket.
+    expect(only).toHaveTextContent("왕복 1장");
   });
 
   it("조회하는 동안에는 진행 중임을 보여 주고 다시 조회할 수 없다", async () => {
@@ -176,14 +236,14 @@ describe("RankingSearch", () => {
   });
 
   it("이번 달 남은 갱신 횟수를 보여 주고, 조회한 뒤 최신 값으로 바꾼다", async () => {
-    // $5.00 / $0.35 = 14, $4.30 / $0.35 = 12
+    // $5.00 / $0.53 = 9, $4.30 / $0.53 = 8
     renderSearch(async () => success({ remainingUsd: 4.3 }), { remainingUsd: 5 });
 
-    expect(screen.getByText("이번 달 남은 갱신 14회")).toBeInTheDocument();
+    expect(screen.getByText("이번 달 남은 갱신 9회")).toBeInTheDocument();
 
     search();
 
-    expect(await screen.findByText("이번 달 남은 갱신 12회")).toBeInTheDocument();
+    expect(await screen.findByText("이번 달 남은 갱신 8회")).toBeInTheDocument();
   });
 
   it("남은 갱신 횟수를 확인하지 못하면 그렇게 표시하고 조회는 할 수 있다", () => {
