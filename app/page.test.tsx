@@ -1,16 +1,25 @@
 import { render, screen } from "@testing-library/react";
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 import Home from "@/app/page";
 
-test("홈 화면은 시작 안내 제목과 배포 링크를 보여준다", () => {
-  render(<Home />);
+vi.mock("@/app/actions", () => ({
+  searchRanking: vi.fn(),
+  getRemainingUsd: vi.fn(async () => 5),
+  getCacheExpiresAt: vi.fn(async () => null),
+}));
+
+test("홈 화면은 부산-오사카 제목과 최저가 조회 버튼, 이번 달 남은 갱신 횟수를 보여준다", async () => {
+  render(await Home());
 
   expect(
-    screen.getByRole("heading", { level: 1, name: /To get started/i })
+    screen.getByRole("heading", {
+      level: 1,
+      name: "부산-오사카 월별 최저가 왕복 항공권",
+    }),
   ).toBeInTheDocument();
-  expect(screen.getByRole("link", { name: /Deploy Now/i })).toHaveAttribute(
-    "href",
-    expect.stringContaining("vercel.com/new")
-  );
+  expect(
+    screen.getByRole("button", { name: "최저가 조회" }),
+  ).toBeInTheDocument();
+  expect(screen.getByText("이번 달 남은 갱신 14회")).toBeInTheDocument();
 });

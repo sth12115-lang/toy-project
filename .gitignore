@@ -50,3 +50,6 @@ next-env.d.ts
 
 # worktree
 .claude/worktrees
+
+# local data (stored flight ranking)
+.data/
